@@ -5,15 +5,18 @@ interface RotatedTextProps {
   children: ReactNode;
   className?: string;
   tilt?: "left" | "right";
+  textsize?: boolean;
 }
 
 export default function RotatedText({
   children,
   className,
   tilt = "left",
+  textsize = false,
 }: RotatedTextProps) {
   const tiltTail = tilt === "left" ? "-rotate-1" : "rotate-1";
 
+  const size = textsize === true ? "text-4xl" : "";
   return (
     <span className={`relative whitespace-nowrap`}>
       <span
@@ -24,7 +27,7 @@ export default function RotatedText({
         )}
         aria-hidden="true"
       />
-      <span className={cn("relative uppercase font-bold")}>{children}</span>
+      <span className={cn(`relative uppercase font-bold text-6xl`)}>{children}</span>
     </span>
   );
 }

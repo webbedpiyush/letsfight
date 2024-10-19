@@ -1,304 +1,339 @@
-"use client";
+'use client'
 
-import BgGrid from "@/components/BgGrid";
-import ChatPanel from "@/components/ChatPanel";
-import RotatedText from "@/components/RotatedText";
-import ThemeSwitcher from "@/components/ThemeSwitcher";
-import { Button, buttonVariants } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
-import { toast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
-import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
-import { Info, MessageSquare, Star} from "lucide-react";
-import Image from "next/image";
-import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useState, useEffect } from 'react'
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import ThemeSwitcher from "@/components/ThemeSwitcher"
+import Link from 'next/link'
+import { Plus, MessageSquare, LogOut, LogIn, Search, Filter, SortAsc, SortDesc } from 'lucide-react'
+import { v4 as uuidv4 } from 'uuid'
+import RotatedText from '@/components/RotatedText'
 
-export type Message = {
-  _id: Id<"message">;
-  _creationTime: number;
-  text: string;
-  sender: string;
-  supportSide: "one-side" | "second-side";
-  createdAt: number;
-};
+type Debate = {
+  id: string
+  title: string
+  sideOne: string
+  sideTwo: string
+  createdAt: number
+  createdBy: string
+  participants: number
+}
 
-export default function Home() {
-  const [clientIp, setClientIp] = useState("");
-  const supporterCount = useQuery(api.messages.groupingNiggasCount);
+type User = {
+  id: string
+  email: string
+  name: string
+}
 
-  const [newMessageOneSide, setNewMessageOneSide] = useState("");
-  const [newMessageSecondSide, setNewMessageSecondSide] = useState("");
+export default function Component() {
+  const [debates, setDebates] = useState<Debate[]>([])
+  const [filteredDebates, setFilteredDebates] = useState<Debate[]>([])
+  const [newDebate, setNewDebate] = useState({
+    title: '',
+    sideOne: '',
+    sideTwo: ''
+  })
+  const [user, setUser] = useState<User | null>(null)
+  const [authForm, setAuthForm] = useState({
+    email: '',
+    password: '',
+    name: ''
+  })
+  const [isAuthDialogOpen, setIsAuthDialogOpen] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
-  const [MessageOneSide, setMessageOneSide] = useState<Message[]>([]);
-  const [MessageSecondSide, setMessageSecondSide] = useState<Message[]>([]);
-
-  const {
-    results: serverMessagesOneSide,
-    status: statusOneSide,
-    loadMore: loadMoreOneSide,
-  } = usePaginatedQuery(
-    api.messages.messages,
-    { supportSide: "one-side" },
-    { initialNumItems: 15 }
-  );
-
-  const {
-    results: serverMessagesSecondSide,
-    status: statusSecondSide,
-    loadMore: loadMoreSecondSide,
-  } = usePaginatedQuery(
-    api.messages.messages,
-    { supportSide: "second-side" },
-    { initialNumItems: 15 }
-  );
-
-  useEffect(function () {
-    async function fetchjson() {
-      const res = await fetch("https://api.ipify.org?format=json");
-      const data = await res.json();
-      setClientIp(data.ip);
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user')
+    if (storedUser) {
+      setUser(JSON.parse(storedUser))
+      fetchDebates()
+    } else {
+      fetchPublicDebates()
     }
+  }, [])
 
-    fetchjson();
-  }, []);
+  useEffect(() => {
+    const filtered = debates.filter(debate =>
+      debate.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      debate.sideOne.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      debate.sideTwo.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+    const sorted = filtered.sort((a, b) => 
+      sortOrder === 'asc' ? a.createdAt - b.createdAt : b.createdAt - a.createdAt
+    )
+    setFilteredDebates(sorted)
+  }, [debates, searchTerm, sortOrder])
 
-  const sendMessage = useMutation(api.messages.send);
-
-  const isLoadingOneSide = statusOneSide === "LoadingFirstPage";
-  const isLoadingSecondSide = statusSecondSide === "LoadingFirstPage";
-
-  async function handleSendMessage(supportSide: "one-side" | "second-side") {
-    const messageText =
-      supportSide === "one-side" ? newMessageOneSide : newMessageSecondSide;
-    if (messageText.trim()) {
-      const tempId = `temp-${Date.now()}`;
-      const userMessage: Message = {
-        _id: tempId as Id<"message">,
-        _creationTime: Date.now(),
-        text: messageText,
-        sender: "Niggas",
-        supportSide,
-        createdAt: Date.now(),
-      };
-
-      // based on supportSide we will set the setter function
-      const setUserMessage =
-        supportSide === "one-side" ? setMessageOneSide : setMessageSecondSide;
-      setUserMessage((prev) => [...prev, userMessage]);
-
-      if (supportSide === "one-side") {
-        setNewMessageOneSide("");
-      } else {
-        setNewMessageSecondSide("");
-      }
-
-      try {
-        const serverMessageId = await sendMessage({
-          text: messageText,
-          sender: "Niggas",
-          supportSide,
-        });
-
-        setUserMessage((prev) =>
-          prev.map((message) =>
-            message._id === tempId
-              ? {
-                  ...message,
-                  _id: serverMessageId as Id<"message">,
-                  _creationTime: Date.now(),
-                }
-              : message
-          )
-        );
-      } catch (error) {
-        setUserMessage((prev) =>
-          prev.filter((message) => message._id !== tempId)
-        );
-        if (error instanceof Error) {
-          toast({
-            variant: "destructive",
-            title: "we have Error",
-            description: error.message,
-          });
-        } else {
-          toast({
-            variant: "destructive",
-            title: "failed something",
-            description: "Failed to send Messages. Please try again",
-          });
-        }
-      }
+  const fetchDebates = () => {
+    const storedDebates = localStorage.getItem('debates')
+    if (storedDebates) {
+      setDebates(JSON.parse(storedDebates))
     }
   }
 
-  const [isInfoDialogOpen, setIsInfoDialogOpen] = useState(false);
+  const fetchPublicDebates = () => {
+    const publicDebates: Debate[] = [
+      {
+        id: '1',
+        title: 'Climate Change Solutions',
+        sideOne: 'Renewable Energy',
+        sideTwo: 'Nuclear Power',
+        createdAt: Date.now() - 86400000,
+        createdBy: 'system',
+        participants: 15
+      },
+      {
+        id: '2',
+        title: 'Education Reform',
+        sideOne: 'Traditional Schooling',
+        sideTwo: 'Homeschooling',
+        createdAt: Date.now() - 172800000,
+        createdBy: 'system',
+        participants: 8
+      },
+      {
+        id: '3',
+        title: 'Space Exploration',
+        sideOne: 'Government Agencies',
+        sideTwo: 'Private Companies',
+        createdAt: Date.now() - 259200000,
+        createdBy: 'system',
+        participants: 12
+      }
+    ]
+    setDebates(publicDebates)
+  }
 
-  const allMessagesOneSide = useMemo(() => {
-    const combined = [...(serverMessagesOneSide || []), ...MessageOneSide];
+  const handleCreateDebate = () => {
+    if (newDebate.title && newDebate.sideOne && newDebate.sideTwo && user) {
+      const debate: Debate = {
+        id: uuidv4(),
+        ...newDebate,
+        createdAt: Date.now(),
+        createdBy: user.id,
+        participants: 0
+      }
+      const updatedDebates = [...debates, debate]
+      setDebates(updatedDebates)
+      localStorage.setItem('debates', JSON.stringify(updatedDebates))
+      setNewDebate({ title: '', sideOne: '', sideTwo: '' })
+    }
+  }
 
-    return combined
-      .filter(
-        (message, index, self) =>
-          index === self.findIndex((item) => item._id === message._id)
-      )
-      .sort((a, b) => a._creationTime - b._creationTime);
-  }, [serverMessagesOneSide, MessageOneSide]);
+  const handleSignIn = (e: React.FormEvent) => {
+    e.preventDefault()
+    const newUser: User = { id: uuidv4(), email: authForm.email, name: authForm.email.split('@')[0] }
+    setUser(newUser)
+    localStorage.setItem('user', JSON.stringify(newUser))
+    fetchDebates()
+    setIsAuthDialogOpen(false)
+  }
 
-  const allMessagesSecondSide = useMemo(() => {
-    const combined = [
-      ...(serverMessagesSecondSide || []),
-      ...MessageSecondSide,
-    ];
+  const handleSignUp = (e: React.FormEvent) => {
+    e.preventDefault()
+    const newUser: User = { id: uuidv4(), email: authForm.email, name: authForm.name }
+    setUser(newUser)
+    localStorage.setItem('user', JSON.stringify(newUser))
+    setIsAuthDialogOpen(false)
+  }
 
-    return combined.filter(
-      (message, index, self) =>
-        index === self.findIndex((item) => item._id === message._id)
-    );
-  }, [serverMessagesSecondSide, MessageSecondSide]);
+  const handleSignOut = () => {
+    setUser(null)
+    localStorage.removeItem('user')
+    fetchPublicDebates()
+  }
+
+  const toggleSortOrder = () => {
+    setSortOrder(prevOrder => prevOrder === 'asc' ? 'desc' : 'asc')
+  }
 
   return (
-    <main className="relative flex flex-col items-center h-screen overflow-y-auto sm:overflow-hidden">
-      <BgGrid />
-      <div className=" z-10 p-4 text-center">
-        <h1 className="font-bold">
-          <span className="block font-extrabold uppercase my-2">
-            Let&apos;s settle the debate
-          </span>
-          <span className="text-5xl">
-            <RotatedText className="bg-gradient-to-br from-[#5A67D8] via-[#7A77D8] to-[#DD3CBE]">
-              one-side
-            </RotatedText>
-            {" vs "}
-            <RotatedText
-              className="bg-gradient-to-tl from-[#DD3CBE] via-[#AD52CB] to-[#5A67D8]"
-              tilt="right"
-            >
-              Second-side
-            </RotatedText>
-          </span>
-          <span className="block text-sm text-muted-foreground mt-2">
-            built by{" "}
-            <Link
-              href="https://x.com/_webbedpiyush"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mx-1 underline hover:text-gray-700 transition-colors duration-200"
-            >
-              <span>Piyush</span>
-            </Link>
-          </span>
-        </h1>
-        <div className="mt-4 absolute top-4 right-4 flex items-center space-x-2">
-          <Dialog open={isInfoDialogOpen} onOpenChange={setIsInfoDialogOpen}>
-            <DialogTrigger asChild>
-              <Button
-                variant="outline"
-                size="icon"
-                className="rounded-full"
-                onClick={() => setIsInfoDialogOpen(true)}
-              >
-                <Info className="h-4 w-4" />
+    <main className="min-h-screen p-8 ">
+      <div className="max-w-full mx-auto">
+        <header className="flex flex-col sm:flex-row justify-between items-center mb-8 gap-4">
+          <RotatedText className="bg-gradient-to-br from-[#5A67D8] via-[#7A77D8] to-[#DD3CBE]" tilt='right'>Lets'fight Dashboard</RotatedText>
+          <div className="flex items-center space-x-4">
+            <ThemeSwitcher />
+            {user ? (
+              <>
+                <span>Welcome, {user.name}</span>
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button>
+                      <Plus className="mr-2 h-4 w-4" /> Create New Debate
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Create a New Debate</DialogTitle>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                      <div className="grid gap-2">
+                        <Label htmlFor="title">Debate Title</Label>
+                        <Input
+                          id="title"
+                          value={newDebate.title}
+                          onChange={(e) => setNewDebate(prev => ({ ...prev, title: e.target.value }))}
+                          placeholder="Enter debate title"
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="sideOne">Side One</Label>
+                        <Input
+                          id="sideOne"
+                          value={newDebate.sideOne}
+                          onChange={(e) => setNewDebate(prev => ({ ...prev, sideOne: e.target.value }))}
+                          placeholder="Enter side one"
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="sideTwo">Side Two</Label>
+                        <Input
+                          id="sideTwo"
+                          value={newDebate.sideTwo}
+                          onChange={(e) => setNewDebate(prev => ({ ...prev, sideTwo: e.target.value }))}
+                          placeholder="Enter side two"
+                        />
+                      </div>
+                    </div>
+                    <Button onClick={handleCreateDebate}>Create Debate</Button>
+                  </DialogContent>
+                </Dialog>
+                <Button variant="outline" onClick={handleSignOut}>
+                  <LogOut className="mr-2 h-4 w-4" /> Sign Out
+                </Button>
+              </>
+            ) : (
+              <Button onClick={() => setIsAuthDialogOpen(true)}>
+                <LogIn className="mr-2 h-4 w-4" /> Login
               </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle>Powered by :</DialogTitle>
-              </DialogHeader>
-              <div className="flex items-center justify-around gap-4 py-1">
-                <Link href="/" className="text-center ">
-                  <Image
-                    src="/landscape-placeholder.svg"
-                    alt="me"
-                    width={50}
-                    height={50}
-                    className="rounded-full"
-                  />
-                  <p className="mt-2 font-bold">Me</p>
+            )}
+          </div>
+        </header>
+        <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center">
+          <div className="relative flex-grow">
+            <Input
+              type="text"
+              placeholder="Search debates..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+          </div>
+          <Button onClick={toggleSortOrder} variant="outline">
+            {sortOrder === 'asc' ? <SortAsc className="mr-2 h-4 w-4" /> : <SortDesc className="mr-2 h-4 w-4" />}
+            Sort by Date
+          </Button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredDebates.map(debate => (
+            <Card key={debate.id} className="flex flex-col h-full">
+              <CardHeader className="flex-grow">
+                <CardTitle className="text-xl">{debate.title}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground mb-2">
+                  {debate.sideOne} vs {debate.sideTwo}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Created: {new Date(debate.createdAt).toLocaleDateString()}
+                </p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Participants: {debate.participants}
+                </p>
+              </CardContent>
+              <CardFooter className="mt-auto">
+                <Link href={`/debate/${debate.id}`} passHref className="w-full">
+                  <Button variant="outline" className="w-full">
+                    <MessageSquare className="mr-2 h-4 w-4" /> Join Debate
+                  </Button>
                 </Link>
-                <Link href="/" className="text-center">
-                  <Image
-                    src="/landscape-placeholder.svg"
-                    alt="me"
-                    width={50}
-                    height={50}
-                    className="rounded-full"
-                  />
-                  <p className="mt-2 font-bold">Myself</p>
-                </Link>
-                <Link href="/" className="text-center">
-                  <Image
-                    src="/landscape-placeholder.svg"
-                    alt="me"
-                    width={50}
-                    height={50}
-                    className="rounded-full"
-                  />
-                  <p className="mt-2 font-bold">I</p>
-                </Link>
-              </div>
-              <div className="flex flex-col items-center space-x-2">
-                <MessageSquare className="size-6 text-gray-500" />
-                <p>You have 5 messages per day , use it </p>
-                <RotatedText className="bg-sky-500" tilt="right">
-                  carefully nigga
-                </RotatedText>
-              </div>
-            </DialogContent>
-          </Dialog>
-          <ThemeSwitcher />
-          <Link
-            href="https://github.com/webbedpiyush/letsfight"
-            target="_blank"
-            className={
-              (cn(
-                "bg-gray-900 hover:bg-gray-800 transition-colors duration-200"
-              ),
-              buttonVariants({ size: "sm" }))
-            }
-          >
-            <Star />
-            Star on GitHub
-          </Link>
+              </CardFooter>
+            </Card>
+          ))}
         </div>
       </div>
-      <div className="flex flex-col sm:flex-row">
-        <ChatPanel
-          title="one-side"
-          logo="/landscape-placeholder.svg"
-          color="one-side"
-          messages={allMessagesOneSide}
-          newMessage={newMessageOneSide}
-          onNewMessageChange={setNewMessageOneSide}
-          onSendMessage={() => handleSendMessage("one-side")}
-          onLoadMore={() => loadMoreOneSide(15)}
-          hasMore={statusOneSide === "CanLoadMore"}
-          supporterCount={supporterCount?.oneside || 0}
-          isLoading={isLoadingOneSide}
-        />
-        <div className="w-px bg-gray-200 mx-2" />
-        <ChatPanel
-          title="second-side"
-          logo="/landscape-placeholder.svg"
-          color="second-side"
-          messages={allMessagesSecondSide}
-          newMessage={newMessageSecondSide}
-          onNewMessageChange={setNewMessageSecondSide}
-          onSendMessage={() => handleSendMessage("second-side")}
-          onLoadMore={() => loadMoreSecondSide(15)}
-          hasMore={statusSecondSide === "CanLoadMore"}
-          supporterCount={supporterCount?.secondside || 0}
-          isLoading={isLoadingSecondSide}
-        />
-      </div>
+      <Dialog open={isAuthDialogOpen} onOpenChange={setIsAuthDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Welcome to Debate Dashboard</DialogTitle>
+          </DialogHeader>
+          <Tabs defaultValue="signin" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="signin">Sign In</TabsTrigger>
+              <TabsTrigger value="signup">Sign Up</TabsTrigger>
+            </TabsList>
+            <TabsContent value="signin">
+              <form onSubmit={handleSignIn} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="m@example.com"
+                    required
+                    value={authForm.email}
+                    onChange={(e) => setAuthForm(prev => ({ ...prev, email: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    required
+                    value={authForm.password}
+                    onChange={(e) => setAuthForm(prev => ({ ...prev, password: e.target.value }))}
+                  />
+                </div>
+                <Button type="submit" className="w-full">Sign In</Button>
+              </form>
+            </TabsContent>
+            <TabsContent value="signup">
+              <form onSubmit={handleSignUp} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Name</Label>
+                  <Input
+                    id="name"
+                    placeholder="John Doe"
+                    required
+                    value={authForm.name}
+                    onChange={(e) => setAuthForm(prev => ({ ...prev, name: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="m@example.com"
+                    required
+                    value={authForm.email}
+                    onChange={(e) => setAuthForm(prev => ({ ...prev, email: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    required
+                    value={authForm.password}
+                    onChange={(e) => setAuthForm(prev => ({ ...prev, password: e.target.value }))}
+                  />
+                </div>
+                <Button type="submit" className="w-full">Sign Up</Button>
+              </form>
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
     </main>
-  );
+  )
 }

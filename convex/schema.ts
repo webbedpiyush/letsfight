@@ -8,4 +8,8 @@ export default defineSchema({
     supportSide: v.union(v.literal("one-side"), v.literal("second-side")),
     createdAt: v.number(),
   }).index("by_createdAt", ["createdAt"]),
-});
+  fights : defineTable({
+    
+  })
+})
+
